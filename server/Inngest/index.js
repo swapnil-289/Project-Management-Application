@@ -78,7 +78,7 @@ async ({ event }) => {
     }
 )
 //Inngest Function to save workspace member data to a database
-const syncWorkspaceMemberCreation = inngest.createFunctio(
+const syncWorkspaceMemberCreation = inngest.createFunction(
     {id:'sync-workspace-member-from-clerk'},
     {event:'clerk/organizationInvitation.accepted'},
     async ({ event }) => {
