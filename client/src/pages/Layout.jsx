@@ -5,7 +5,7 @@ import { Outlet } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { loadTheme } from '../features/themeSlice'
 import { Loader2Icon } from 'lucide-react'
-import { useUser, SignIn, CreateOrganization} from '@clerk/clerk-react'
+import { useUser, SignIn, CreateOrganization, useAuth} from '@clerk/clerk-react'
 import { fetchWorkspaces } from '../features/workspaceSlice'
 
 const Layout = () => {
@@ -23,7 +23,7 @@ const Layout = () => {
 
     // Initial load of workspaces
     useEffect(()=>{
-        if(isLoaded && user && workspace.length === 0){
+        if(isLoaded && user && workspaces.length === 0){
             dispatch(fetchWorkspaces({getToken}))
         }
         
@@ -43,7 +43,7 @@ const Layout = () => {
         </div>
     )
 
-    if(user && workspace.length ===0){
+    if(user && workspace.length === 0){
         return  (
             <div className='min-h-screen flex justify-center items-center'>
                 <CreateOrganization />
