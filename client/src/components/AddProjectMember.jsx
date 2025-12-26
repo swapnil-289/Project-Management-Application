@@ -1,13 +1,17 @@
 import { useState } from "react";
 import { Mail, UserPlus } from "lucide-react";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { useSearchParams } from "react-router-dom";
+import { fetchWorkspaces } from "../features/workspaceSlice";
 
 const AddProjectMember = ({ isDialogOpen, setIsDialogOpen }) => {
 
     const [searchParams] = useSearchParams();
 
     const id = searchParams.get('id');
+
+    const {getToken} = useAuth()
+    const dispatch = useDispatch()
 
     const currentWorkspace = useSelector((state) => state.workspace?.currentWorkspace || null);
 
@@ -19,6 +23,16 @@ const AddProjectMember = ({ isDialogOpen, setIsDialogOpen }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setIsAdding(true)
+        try{
+            await api.post(`/api/projects/${project.id}/addMember`, {email}, {headers: {Authorization: `Bearer ${await getToken()}`}})
+            toast.success("Added to project successfully")
+            setIsDialogOpen(false)
+            dispatch(fetchWorkspaces({getToken}))
+        }catch(error){
+            toast.error(error.response?.data?.message || error.message)
+
+        }
         
     };
 

@@ -1,6 +1,6 @@
 import prisma from "../configs/prisma.js";
 //create project
-export const createProject = async (requestAnimationFrame,res)=> {
+export const createProject = async (req,res)=> {
     try {
         const {userId} =await requestAnimationFrame.auth();
         const {workspaceId, description, name, status, start_date, end_date, team_members, team_lead, progress, priority} = req.body;
@@ -74,7 +74,7 @@ export const createProject = async (requestAnimationFrame,res)=> {
 }
 
 //update project
-export const updateProject = async (requestAnimationFrame,res)=> {
+export const updateProject = async (req,res)=> {
     try {
         const { userId } = await req.auth();
 
@@ -123,9 +123,43 @@ export const updateProject = async (requestAnimationFrame,res)=> {
 }
 
 //Add member to project
-export const addMember = async (requestAnimationFrame,res)=> {
+export const addMember = async (req,res)=> {
     try {
+        const { userId} = await req.auth();
+        const { projectId} = req.params;
+        const { email } = req.body;
 
+        //check if user is project lead
+        const project = await prisma.project.findUnique({
+            where: {id: projectId},
+            include: {members: {include: {user: true}}}
+        })
+
+        if(!project){
+            return res.status(404).json({message: "Project not found"});
+        }
+        if(project.team_lead !==userId){
+            return res.status(404).json({Message: "only project lead can add members"});
+        }
+
+        //check if user is already a member
+        const existingMember = project.members.find((member)=>member.email===email)
+
+        if(existingMember){
+            return res.status(400).json({message: "User is already a member"});
+        }
+        const user = await prisma.user.findUnique({where: {email}});
+        if(!user){
+            return res.status(404).json({message: "User not found"});
+        }
+
+        const member = await prisma.projectMember.create({
+            data: {
+                userId: user.id,
+                projectId
+            }
+        })
+        res.json({member, message: "Member added successfully"})
     }catch(error) {
         console.log(error);
         res.status(500).json({message: error.code || error.message})
