@@ -4,11 +4,13 @@ import { useDispatch, useSelector } from "react-redux";
 import { format } from "date-fns";
 import { useAuth } from "@clerk/clerk-react";
 import { addTask } from "../features/workspaceSlice";
+import api from "../configs/api";
+import toast from "react-hot-toast";
 
 export default function CreateTaskDialog({ showCreateTask, setShowCreateTask, projectId }) {
 
-    const {getToken} = useAuth()
-    const dispatch = useDispatch()
+    const { getToken } = useAuth();
+    const dispatch = useDispatch();
 
     const currentWorkspace = useSelector((state) => state.workspace?.currentWorkspace || null);
     const project = currentWorkspace?.projects.find((p) => p.id === projectId);
@@ -27,10 +29,11 @@ export default function CreateTaskDialog({ showCreateTask, setShowCreateTask, pr
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setIsSubmitting(true)
-        try{
-            const {data} = await api.post('/api/tasks', {../formData, workspaceId: currentWorkspace.id, projectId}, {headers: {Authorization: `Bearer ${ await getToken()}`}})
-            setShowCreateTask(false)
+        setIsSubmitting(true);
+        try {
+            const token = await getToken();
+            const { data } = await api.post('/api/tasks', { ...formData, workspaceId: currentWorkspace.id, projectId }, { headers: { Authorization: `Bearer ${token}` } });
+            setShowCreateTask(false);
             setFormData({
                 title: "",
                 description: "",
@@ -39,13 +42,13 @@ export default function CreateTaskDialog({ showCreateTask, setShowCreateTask, pr
                 priority: "MEDIUM",
                 assigneeId: "",
                 due_date: "",
-            })
-            toast.success(data.message)
-            dispatch(addTask(data.task))
-        }catch(error){
+            });
+            toast.success(data.message);
+            dispatch(addTask(data.task));
+        } catch (error) {
             toast.error(error?.response?.data?.message || error.message);
-        }finally{
-            setIsSubmitting(false)
+        } finally {
+            setIsSubmitting(false);
         }
 
     };
@@ -83,7 +86,7 @@ export default function CreateTaskDialog({ showCreateTask, setShowCreateTask, pr
 
                         <div className="space-y-1">
                             <label className="text-sm font-medium">Priority</label>
-                            <select value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value })} className="w-full rounded dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-200 text-sm mt-1"                             >
+                            <select value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value })} className="w-full rounded dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-200 text-sm mt-1" >
                                 <option value="LOW">Low</option>
                                 <option value="MEDIUM">Medium</option>
                                 <option value="HIGH">High</option>

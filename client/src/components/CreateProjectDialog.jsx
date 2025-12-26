@@ -8,8 +8,8 @@ import { addProject } from "../features/workspaceSlice";
 
 const CreateProjectDialog = ({ isDialogOpen, setIsDialogOpen }) => {
 
-    const {getToken} = useAuth()
-    const dispatch = useDispatch()
+    const { getToken } = useAuth();
+    const dispatch = useDispatch();
 
     const { currentWorkspace } = useSelector((state) => state.workspace);
 
@@ -29,22 +29,34 @@ const CreateProjectDialog = ({ isDialogOpen, setIsDialogOpen }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        e.preventDefault();
-        try{
-            if(!formData.team_lead){
-                return toast.error("Please select a team lead")
+        try {
+            if (!formData.team_lead) {
+                return toast.error("Please select a team lead");
             }
-            setIsSubmitting(true)
-            const {data} = await api.post("/api/projects", {workspaceId: currentWorkspace.id, ...formData}, {headers: {Authentication: `Bearer ${await getToken()}`}})
-            dispatch(addProject(data/project))
-            setIsDialogOpen(false)
-        }catch(error){
-            toast.error(error?.response?.data?.message || error.message) 
+            setIsSubmitting(true);
+            const token = await getToken();
+            const { data } = await api.post("/api/projects", { workspaceId: currentWorkspace.id, ...formData }, { headers: { Authorization: `Bearer ${token}` } });
+            
+            // Fixed typo: data/project -> data.project
+            dispatch(addProject(data.project)); 
+            setIsDialogOpen(false);
+            setFormData({
+                name: "",
+                description: "",
+                status: "PLANNING",
+                priority: "MEDIUM",
+                start_date: "",
+                end_date: "",
+                team_members: [],
+                team_lead: "",
+                progress: 0,
+            });
+            toast.success("Project created successfully");
+        } catch (error) {
+            toast.error(error?.response?.data?.message || error.message);
+        } finally {
+            setIsSubmitting(false);
         }
-        finally{
-            setIsSubmitting(false)
-        }
-        
     };
 
     const removeTeamMember = (email) => {
@@ -140,9 +152,9 @@ const CreateProjectDialog = ({ isDialogOpen, setIsDialogOpen }) => {
                         >
                             <option value="">Add team members</option>
                             {currentWorkspace?.members
-                                ?.filter((email) => !formData.team_members.includes(email))
+                                ?.filter((member) => !formData.team_members.includes(member.user.email))
                                 .map((member) => (
-                                    <option key={member.user.email} value={member.email}>
+                                    <option key={member.user.email} value={member.user.email}>
                                         {member.user.email}
                                     </option>
                                 ))}

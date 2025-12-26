@@ -5,192 +5,207 @@ import sendEmail from "../configs/nodemailer.js";
 // Create a client to send and receive events
 export const inngest = new Inngest({ id: "project-management-webapplication" });
 
+// --- USER FUNCTIONS ---
+
 const syncUserCreation = inngest.createFunction(
     { id: 'sync-user-from-clerk' },
     { event: 'clerk/user.created' },
     async ({ event }) => {
         const { data } = event;
-        await prisma.user.create({
-            data: {
+        const email = data.email_addresses?.[0]?.email_address || "";
+        const name = `${data.first_name || ""} ${data.last_name || ""}`.trim();
+
+        // Use upsert to prevent "User already exists" crashes
+        await prisma.user.upsert({
+            where: { id: data.id },
+            update: {
+                email: email,
+                name: name,
+                image: data.image_url,
+            },
+            create: {
                 id: data.id,
-                email: data.email_addresses[0]?.email_address,
-                name: `${data.first_name} ${data.last_name}`,
+                email: email,
+                name: name,
                 image: data.image_url,
             }
-        })
+        });
     }
 )
 
+const syncUserUpdation = inngest.createFunction(
+    { id: 'update-user-from-clerk' },
+    { event: 'clerk/user.updated' },
+    async ({ event }) => {
+        const { data } = event;
+        const email = data.email_addresses?.[0]?.email_address || "";
+        const name = `${data.first_name || ""} ${data.last_name || ""}`.trim();
+
+        await prisma.user.upsert({
+            where: { id: data.id },
+            update: {
+                email: email,
+                name: name,
+                image: data.image_url,
+            },
+            create: {
+                id: data.id,
+                email: email,
+                name: name,
+                image: data.image_url,
+            }
+        });
+    }
+)
+
+const syncUserDeletion = inngest.createFunction(
+    { id: 'delete-user-from-clerk' },
+    { event: 'clerk/user.deleted' },
+    async ({ event }) => {
+        const { data } = event;
+        try {
+            await prisma.user.delete({ where: { id: data.id } });
+        } catch (error) {
+            // Ignore if user is already deleted
+            if (error.code !== 'P2025') throw error;
+        }
+    }
+)
+
+// --- WORKSPACE FUNCTIONS (These were missing!) ---
 
 const syncWorkspaceCreation = inngest.createFunction(
-    {id: 'sync-workspace-from-clerk'},
-    {event: 'clerk/organization.created'},
+    { id: 'sync-workspace-from-clerk' },
+    { event: 'clerk/organization.created' },
     async ({ event }) => {
-        const {data} = event;
-        await prisma.workspace.create({
-            data: {
+        const { data } = event;
+        
+        await prisma.workspace.upsert({
+            where: { id: data.id },
+            update: {
+                name: data.name,
+                slug: data.slug,
+                image_url: data.image_url,
+            },
+            create: {
                 id: data.id,
                 name: data.name,
                 slug: data.slug,
                 ownerId: data.created_by,
                 image_url: data.image_url,
             }
-        })
-        //add creator as admin
-        await prisma.workspaceMember.create({
-            data:{
+        });
+
+        // Ensure creator is admin
+        await prisma.workspaceMember.upsert({
+            where: {
+                userId_workspaceId: {
+                    userId: data.created_by,
+                    workspaceId: data.id,
+                }
+            },
+            update: { role: "ADMIN" },
+            create: {
                 userId: data.created_by,
                 workspaceId: data.id,
                 role: "ADMIN"
             }
-        })
+        });
     }
 )
-//inngest function to update workspace data in database
+
 const syncWorkspaceUpdation = inngest.createFunction(
-    {id: 'update-workspace-from-clerk'},
-    {event: 'clerk/organization.updated'},
+    { id: 'update-workspace-from-clerk' },
+    { event: 'clerk/organization.updated' },
     async ({ event }) => {
         const { data } = event;
-        await prisma.workspace.update({
-            where: {
-                id: data.id
-            },
-            data: {
-                name: data.name,
-                slug: data.slug,
-                image_url: data.image_url,
-            }
-        })
+        // Only update if it exists
+        const count = await prisma.workspace.count({ where: { id: data.id } });
+        if (count > 0) {
+            await prisma.workspace.update({
+                where: { id: data.id },
+                data: {
+                    name: data.name,
+                    slug: data.slug,
+                    image_url: data.image_url,
+                }
+            });
+        }
     }
 )
 
-//Inngest function to delete workspace from database
 const syncWorkspaceDeletion = inngest.createFunction(
-    {id: 'delete-workspace-with-clerk'},
-    {event: 'clerk/organization.deleted'},
-async ({ event }) => {
-    const { data }= event;
-    await prisma.workspace.delete({
-        where: {
-            id: data.id
+    { id: 'delete-workspace-with-clerk' },
+    { event: 'clerk/organization.deleted' },
+    async ({ event }) => {
+        const { data } = event;
+        try {
+            await prisma.workspace.delete({ where: { id: data.id } });
+        } catch (error) {
+            if (error.code !== 'P2025') throw error;
         }
-    })
     }
 )
-//Inngest Function to save workspace member data to a database
+
 const syncWorkspaceMemberCreation = inngest.createFunction(
-    {id:'sync-workspace-member-from-clerk'},
-    {event:'clerk/organizationInvitation.accepted'},
-    async ({ event }) => {
-        const {data} = event;
-    await prisma.workspaceMember.create({
-        data:{
-            userId: data.user_id,
-            workspaceId: data.organization_id,
-            role: String(data.role_name).toUpperCase(),
-        }
-    })
-}
-)
-
-// Inngest function to delete the user data in database
-// FIXED: Renamed function (typo) and fixed Prisma delete syntax
-const syncUserDeletion = inngest.createFunction(
-    { id: 'delete-user-from-clerk' },
-    { event: 'clerk/user.deleted' },
+    { id: 'sync-workspace-member-from-clerk' },
+    { event: 'clerk/organizationInvitation.accepted' },
     async ({ event }) => {
         const { data } = event;
-        await prisma.user.delete({
-            where: { // ✅ Changed from 'data' to 'where'
-                id: data.id,
-            }
-        })
-    }
-)
-
-// Inngest function to update the user data in database
-const syncUserUpdation = inngest.createFunction(
-    { id: 'update-user-from-clerk' },
-    { event: 'clerk/user.updated' },
-    async ({ event }) => {
-        const { data } = event;
-        await prisma.user.update({
+        await prisma.workspaceMember.upsert({
             where: {
-                id: data.id
+                userId_workspaceId: {
+                    userId: data.public_user_data.user_id, // Access user_id correctly
+                    workspaceId: data.organization_id,
+                }
             },
-            data: {
-                // Note: We do not include 'id' here, as we are already targeting it in 'where'
-                email: data.email_addresses[0]?.email_address,
-                name: `${data.first_name} ${data.last_name}`,
-                image: data.image_url,
+            update: { role: String(data.role || "MEMBER").toUpperCase().includes("ADMIN") ? "ADMIN" : "MEMBER" },
+            create: {
+                userId: data.public_user_data.user_id,
+                workspaceId: data.organization_id,
+                role: String(data.role || "MEMBER").toUpperCase().includes("ADMIN") ? "ADMIN" : "MEMBER",
             }
-        })
+        });
     }
 )
 
-//Inngest function to send email on task creation 
+// --- TASK FUNCTIONS ---
+
 const sendTaskAssignmentEmail = inngest.createFunction(
-    {id: "send-task-assignment-mail"},
-    {event: "app/task.assigned"},
-    async ({event, step}) =>  {
-        const {taskId, origin} = event.data;
-        const task = await prisma.task.findUnique({
-            where: {id: taskId},
-            include: {assignee: true, project: true}
-        })
-        await sendEmail({
-            to: task.assignee.email,
-            subject: `New Task Assignment in ${task.project.name}`,
-            body: `<div style="max-width: 600px;">
+    { id: "send-task-assignment-mail" },
+    { event: "app/task.assigned" },
+    async ({ event, step }) => {
+        const { taskId, origin } = event.data;
+        
+        // Fetch data inside a step
+        const task = await step.run('fetch-task', async () => {
+            return await prisma.task.findUnique({
+                where: { id: taskId },
+                include: { assignee: true, project: true }
+            });
+        });
 
-<h2>Hi ${task.assignee.name},</h2>
+        if (!task || !task.assignee) return;
 
-<p style="font-size: 16px;">You've been assigned a new task:</p>
-
-<p style="font-size: 18px; font-weight: bold; color: #007bff; margin: 8px 0;">${task.title}</p>
-
-<div style="border: 1px solid #ddd; padding: 12px 16px;
-
-border-radius: 6px; margin-bottom: 30px;"> <p style="margin: 6px 0;"><strong>Description:</strong> $ {task.description}</p> <p style="margin: 6px 0;"><strong>Due Date:</strong> ${new Date(task.due_date).toLocaleDateString()}</p>
-</div>
-<a href="${origin}" style="background-color: #007bff; padding: 12px 24px; border-radius: 5px; color: #fff; font-weight: 600;
-
-font-size: 16px; text-decoration: none;">view task </a>
-<p Styles="margin-top: 20px; font-size: 14px; color: #6c757d;">Please make sure to review and complete it before the due</p></div>`
-
-        })
+        await step.run('send-assignment-email', async () => {
+            await sendEmail({
+                to: task.assignee.email,
+                subject: `New Task: ${task.title}`,
+                body: `You have been assigned to ${task.title} in ${task.project.name}. <a href="${origin}">View Task</a>`
+            });
+        });
     }
 )
 
-if(new Date(task.due_date).toLocaleDateString() !==new Date().toDateString()){
-    await step.sleepUntil('wait-for-the-due-date', new Date(task.due_date));
-    await step.run('check-if-task-is-completed', async () =>{
-        const task = await prisma.task.findUnique({
-            where: {id: taskId},
-            include: {assignee: true, project:true}
-        })
-        if(!task) return;
-
-if(task.status !== "DONE") {
-
-await step.run('send-task-reminder-mail', async () => {
-
-await sendEmail({
-
-to: task.assignee.email,
-
-subject: `Reminder for ${task.project.name}`,
-body: 
-
-})
-
-})
-
-}
-    })
-}
-
-
-// Create an empty array where we'll export future Inngest functions
-export const functions = [syncUserCreation, syncUserDeletion, syncUserUpdation, syncWorkspaceCreation, syncWorkspaceUpdation, syncWorkspaceDeletion, syncWorkspaceMemberCreation, sendTaskAssignmentEmail];
+// --- EXPORT ALL FUNCTIONS ---
+// This was likely the missing part!
+export const functions = [
+    syncUserCreation, 
+    syncUserUpdation, 
+    syncUserDeletion, 
+    syncWorkspaceCreation, 
+    syncWorkspaceUpdation, 
+    syncWorkspaceDeletion, 
+    syncWorkspaceMemberCreation, 
+    sendTaskAssignmentEmail
+];

@@ -3,37 +3,42 @@ import { Mail, UserPlus } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import { useSearchParams } from "react-router-dom";
 import { fetchWorkspaces } from "../features/workspaceSlice";
+import { useAuth } from "@clerk/clerk-react";
+import api from "../configs/api";
+import toast from "react-hot-toast";
 
 const AddProjectMember = ({ isDialogOpen, setIsDialogOpen }) => {
 
     const [searchParams] = useSearchParams();
-
     const id = searchParams.get('id');
 
-    const {getToken} = useAuth()
-    const dispatch = useDispatch()
+    const { getToken } = useAuth();
+    const dispatch = useDispatch();
 
     const currentWorkspace = useSelector((state) => state.workspace?.currentWorkspace || null);
 
     const project = currentWorkspace?.projects.find((p) => p.id === id);
-    const projectMembersEmails = project?.members.map((member) => member.user.email);
+    // Safety check in case project isn't loaded yet
+    const projectMembersEmails = project?.members.map((member) => member.user.email) || [];
 
     const [email, setEmail] = useState('');
     const [isAdding, setIsAdding] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setIsAdding(true)
-        try{
-            await api.post(`/api/projects/${project.id}/addMember`, {email}, {headers: {Authorization: `Bearer ${await getToken()}`}})
-            toast.success("Added to project successfully")
-            setIsDialogOpen(false)
-            dispatch(fetchWorkspaces({getToken}))
-        }catch(error){
-            toast.error(error.response?.data?.message || error.message)
-
+        setIsAdding(true);
+        try {
+            const token = await getToken();
+            await api.post(`/api/projects/${project.id}/addMember`, { email }, { headers: { Authorization: `Bearer ${token}` } });
+            toast.success("Added to project successfully");
+            setIsDialogOpen(false);
+            dispatch(fetchWorkspaces({ getToken }));
+            setEmail(''); // Reset email
+        } catch (error) {
+            toast.error(error.response?.data?.message || error.message);
+        } finally {
+            setIsAdding(false);
         }
-        
     };
 
     if (!isDialogOpen) return null;
@@ -46,7 +51,7 @@ const AddProjectMember = ({ isDialogOpen, setIsDialogOpen }) => {
                     <h2 className="text-xl font-bold flex items-center gap-2">
                         <UserPlus className="size-5 text-zinc-900 dark:text-zinc-200" /> Add Member to Project
                     </h2>
-                    {currentWorkspace && (
+                    {project && (
                         <p className="text-sm text-zinc-700 dark:text-zinc-400">
                             Adding to Project: <span className="text-blue-600 dark:text-blue-400">{project.name}</span>
                         </p>
